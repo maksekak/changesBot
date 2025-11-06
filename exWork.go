@@ -3,12 +3,26 @@ package main
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/xuri/excelize/v2"
 )
 
+func GetTodayWeekday() string {
+	weekdays := []string{
+		"Воскресенье",
+		"Понедельник",
+		"Вторник",
+		"Среда",
+		"Четверг",
+		"Пятница",
+		"Суббота",
+	}
+	return weekdays[time.Now().Weekday()]
+}
+
 // FindRowByGroup ищет строку с groupName и убирает автоперенос в ячейках
-func FindRowByGroup(filename, groupName string) ([]string, error) {
+func FindRowByGroup(filename, groupName string, sheetNum int) ([]string, error) {
 	// Открываем файл Excel
 	f, err := excelize.OpenFile(filename)
 	if err != nil {
@@ -22,18 +36,70 @@ func FindRowByGroup(filename, groupName string) ([]string, error) {
 		return nil, fmt.Errorf("в файле нет листов")
 	}
 
-	sheetName := sheetList[0]
+	sheetName := sheetList[sheetNum]
 	// Сначала получаем все координаты ячеек
+	cols, _ := f.GetCols(sheetName)
 	rows, err := f.GetRows(sheetName)
 	if err != nil {
 		return nil, fmt.Errorf("ошибка чтения строк листа %q: %w", sheetName, err)
 	}
+	var o []string
+	// Поиск строки с groupName
+	for i, r := range rows {
+		if strings.Contains(r[0], GetTodayWeekday()) {
+			for j, c := range cols {
+				if strings.Contains(c[0], groupName) {
+					for k := range 5 {
+						if rows[i+k][j] == "" {
+							break
+						}
+						o = append(o, rows[k+1][1], rows[i+k][j], "\n")
+
+					}
+
+				}
+			}
+		}
+
+	}
+	cleanedData := make([]string, len(o))
+
+	for i, item := range o {
+		// Удаляем все \n
+		cleanedData[i] = strings.ReplaceAll(item, "\n", "  ")
+		// Или удаляем \n только в конце: cleanedData[i] = strings.TrimSuffix(item, "\n")
+	}
+
+	return cleanedData, nil
+	//return nil, fmt.Errorf("группа %q не найдена в файле", groupName)
+}
+
+func FindCollByGroup(filename, groupName string, sheetNum int) ([]string, error) {
+	// Открываем файл Excel
+	f, err := excelize.OpenFile(filename)
+	if err != nil {
+		return nil, fmt.Errorf("ошибка открытия файла: %w", err)
+	}
+	defer f.Close()
+
+	// Получаем список всех листов
+	sheetList := f.GetSheetList()
+	if len(sheetList) == 0 {
+		return nil, fmt.Errorf("в файле нет листов")
+	}
+
+	sheetName := sheetList[sheetNum]
+	// Сначала получаем все координаты ячеек
+	cols, err := f.GetRows(sheetName)
+	if err != nil {
+		return nil, fmt.Errorf("ошибка чтения столбов листа %q: %w", sheetName, err)
+	}
 
 	// Поиск строки с groupName
-	for _, row := range rows {
-		for _, cell := range row {
+	for _, col := range cols {
+		for _, cell := range col {
 			if strings.EqualFold(cell, groupName) {
-				return row, nil
+				return col, nil
 			}
 
 		}
@@ -41,13 +107,10 @@ func FindRowByGroup(filename, groupName string) ([]string, error) {
 
 	return nil, fmt.Errorf("группа %q не найдена в файле", groupName)
 }
-func getChanges(name string) string {
-	siteURL := "https://tgiek.ru/studentam" // URL страницы с ссылкой
-	linkText := "Изменения в расписании"    // Текст ссылки, по которому ищем
-	outputDir := ""                         // Директория для сохранения файла
 
+func getChanges(name, linkText string) string {
 	// 1. Находим ВТОРУЮ ссылку по тексту
-	excelLink, err := FindSecondLinkByText(siteURL, linkText)
+	excelLink, err := FindDoc(siteURL, linkText)
 	if err != nil {
 		fmt.Printf("Ошибка поиска второй ссылки: %v\n", err)
 
@@ -63,14 +126,14 @@ func getChanges(name string) string {
 	fmt.Printf("URL для экспорта: %s\n", exportURL)
 
 	// 3. Скачиваем файл
-	filePath, err := DownloadFile(exportURL, outputDir)
+	filePath, err := DownloadFile(exportURL, outputDir, "changesFile.xlsx")
 	if err != nil {
 		fmt.Printf("Ошибка скачивания файла: %v\n", err)
 
 	}
 
 	fmt.Printf("Файл успешно сохранён: %s\n", filePath)
-	list, _ := FindRowByGroup("changesFile.xlsx", name)
+	list, _ := FindRowByGroup("changesFile.xlsx", name, 0)
 	fmt.Print(list)
 
 	fmt.Println("")

@@ -4,13 +4,17 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strings"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/joho/godotenv"
 )
 
 var (
-	bot *tgbotapi.BotAPI
+	bot     *tgbotapi.BotAPI
+	siteURL = "https://tgiek.ru/studentam" // URL страницы с ссылкой
+
+	outputDir = "" // Директория для сохранения файла
 )
 
 func main() {
@@ -30,9 +34,6 @@ func main() {
 	u := tgbotapi.NewUpdate(0)
 	u.Timeout = 60
 
-	// Create a new cancellable background context. Calling `cancel()` leads to the cancellation of the context
-
-	// `updates` is a golang channel which receives telegram updates
 	updates := bot.GetUpdatesChan(u)
 
 	for {
@@ -59,12 +60,18 @@ func handleMessage(message *tgbotapi.Message) {
 		return
 	}
 	if text == "/changes" || text == "/changes@collegeChangesBot" {
-		temp := getChanges("3-ИС3")
+		temp := getChanges("3-ИС3", "Изменения в расписании")
 		fmt.Println(temp)
 		if temp == "" {
-			msg := tgbotapi.NewMessage(message.Chat.ID, "Изменений нет")
+			msgg := tgbotapi.NewMessage(message.Chat.ID, "Изменений нет")
+			bot.Send(msgg)
+			c, _ := FindRowByGroup("scheduleFile.xlsx", "3-ИС3", 0)
+			t := strings.Join(c, "\n")
+			msg := tgbotapi.NewMessage(message.Chat.ID, t)
 			bot.Send(msg)
 		} else {
+			msgg := tgbotapi.NewMessage(message.Chat.ID, "Изменения")
+			bot.Send(msgg)
 			msg := tgbotapi.NewMessage(message.Chat.ID, trimToWord(temp, "1 пара"))
 			bot.Send(msg)
 		}

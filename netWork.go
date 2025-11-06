@@ -11,7 +11,7 @@ import (
 	"golang.org/x/net/html"
 )
 
-func FindSecondLinkByText(url, searchText string) (string, error) {
+func FindDoc(url, searchText string) (string, error) {
 	resp, err := http.Get(url)
 	if err != nil {
 		return "", fmt.Errorf("ошибка запроса: %w", err)
@@ -32,7 +32,7 @@ func FindSecondLinkByText(url, searchText string) (string, error) {
 		return "", fmt.Errorf("ошибка парсинга HTML: %w", err)
 	}
 
-	var links []string // будем собирать все подходящие ссылки
+	var link string // будем хранить первую найденную подходящую ссылку
 
 	var f func(*html.Node)
 	f = func(n *html.Node) {
@@ -41,23 +41,27 @@ func FindSecondLinkByText(url, searchText string) (string, error) {
 			if strings.Contains(strings.ToLower(text), strings.ToLower(searchText)) {
 				for _, attr := range n.Attr {
 					if attr.Key == "href" {
-						links = append(links, attr.Val)
+						link = attr.Val // сохраняем первую найденную ссылку
+						return          // прерываем поиск после нахождения первой ссылки
 					}
 				}
 			}
 		}
-		for c := n.FirstChild; c != nil; c = c.NextSibling {
-			f(c)
+		// продолжаем обход дочерних узлов, только если ссылка ещё не найдена
+		if link == "" {
+			for c := n.FirstChild; c != nil; c = c.NextSibling {
+				f(c)
+			}
 		}
 	}
 	f(doc)
 
-	// Проверяем, есть ли хотя бы две ссылки
-	if len(links) < 2 {
-		return "", fmt.Errorf("найдено меньше двух ссылок с текстом %q (найдено: %d)", searchText, len(links))
+	// Проверяем, найдена ли ссылка
+	if link == "" {
+		return "", fmt.Errorf("не найдено ссылок с текстом %q", searchText)
 	}
 
-	return links[1], nil // возвращаем ВТОРУЮ ссылку (индекс 1)
+	return link, nil // возвращаем найденную ссылку
 }
 
 // getText собирает текст из узла
@@ -79,24 +83,35 @@ func convertToGoogleExportURL(originalURL string) (string, error) {
 		return "", fmt.Errorf("URL не является ссылкой на Google Таблицы: %s", originalURL)
 	}
 
-	// Извлекаем ID таблицы (между /d/ и следующим /)
+	// Извлекаем ID таблицы (между /d/ и следующим / или /edit)
 	idStart := strings.Index(originalURL, "/d/") + 3
 	if idStart == -1 {
 		return "", fmt.Errorf("не удалось извлечь ID таблицы из URL")
 	}
-	idEnd := strings.Index(originalURL[idStart:], "/")
-	if idEnd == -1 {
-		idEnd = len(originalURL) - idStart
+
+	// Ищем позицию /edit или следующего / после /d/
+	editPos := strings.Index(originalURL[idStart:], "/edit")
+	slashPos := strings.Index(originalURL[idStart:], "/")
+
+	var idEnd int
+	if editPos != -1 && slashPos != -1 {
+		// Выбираем минимальную позицию между /edit и /
+		idEnd = idStart + min(editPos, slashPos)
+	} else if editPos != -1 {
+		idEnd = idStart + editPos
+	} else if slashPos != -1 {
+		idEnd = idStart + slashPos
 	} else {
-		idEnd += idStart
+		idEnd = len(originalURL)
 	}
+
 	tableID := originalURL[idStart:idEnd]
 
-	// Ищем gid (номер листа), если есть
+	// Ищем gid (номер листа) после #gid=
 	gid := ""
-	gidPos := strings.Index(originalURL, "gid=")
+	gidPos := strings.Index(originalURL, "#gid=")
 	if gidPos != -1 {
-		gid = originalURL[gidPos+4:] // пропускаем "gid="
+		gid = originalURL[gidPos+5:] // пропускаем "#gid="
 		// обрезаем по первому & или концу строки
 		andPos := strings.Index(gid, "&")
 		if andPos != -1 {
@@ -113,8 +128,50 @@ func convertToGoogleExportURL(originalURL string) (string, error) {
 	return exportURL, nil
 }
 
+// Вспомогательная функция для нахождения минимума двух чисел
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+func convertToGoogleExportURLForThirdSheet(originalURL string) (string, error) {
+	// Проверяем, что URL содержит нужный домен
+	if !strings.Contains(originalURL, "docs.google.com/spreadsheets/d/") {
+		return "", fmt.Errorf("URL не является ссылкой на Google Таблицы: %s", originalURL)
+	}
+
+	// Извлекаем ID таблицы (между /d/ и следующим / или /edit)
+	idStart := strings.Index(originalURL, "/d/") + 3
+	if idStart == -1 {
+		return "", fmt.Errorf("не удалось извлечь ID таблицы из URL")
+	}
+
+	// Ищем позицию /edit или следующего / после /d/
+	editPos := strings.Index(originalURL[idStart:], "/edit")
+	slashPos := strings.Index(originalURL[idStart:], "/")
+
+	var idEnd int
+	if editPos != -1 && slashPos != -1 {
+		// Выбираем минимальную позицию между /edit и /
+		idEnd = idStart + min(editPos, slashPos)
+	} else if editPos != -1 {
+		idEnd = idStart + editPos
+	} else if slashPos != -1 {
+		idEnd = idStart + slashPos
+	} else {
+		idEnd = len(originalURL)
+	}
+
+	tableID := originalURL[idStart:idEnd]
+
+	exportURL := fmt.Sprintf("https://docs.google.com/spreadsheets/d/%s/export?format=xlsx&gid=254196325", tableID)
+
+	return exportURL, nil
+}
+
 // DownloadFile скачивает файл и сохраняет его с расширением .xlsx
-func DownloadFile(fileURL, outputDir string) (string, error) {
+func DownloadFile(fileURL, outputDir, fileName string) (string, error) {
 	resp, err := http.Get(fileURL)
 	if err != nil {
 		return "", fmt.Errorf("ошибка загрузки файла: %w", err)
@@ -126,7 +183,6 @@ func DownloadFile(fileURL, outputDir string) (string, error) {
 	}
 
 	// Определяем имя файла из URL (после /export?)
-	fileName := "changesFile.xlsx"
 
 	// Формируем полный путь
 	filePath := filepath.Join(outputDir, fileName)
