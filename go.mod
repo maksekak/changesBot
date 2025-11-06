@@ -1,4 +1,4 @@
-module github.com/maksekak/changesBot.git
+module bot
 
 go 1.25.3
 
