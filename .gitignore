@@ -26,7 +26,7 @@ go.work.sum
 
 # env file
 .env
-
+.xlxs
 # Editor/IDE
 # .idea/
 # .vscode/
