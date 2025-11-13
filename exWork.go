@@ -149,30 +149,79 @@ func organizedChanges(b []string) []string {
 	var act []string
 	var d []string
 	for _, c := range b {
-		//if c == "-" {
-		//	continue
-		//}
+
 		d = strings.Split(c, "\n")
 		act = append(act, d...)
 	}
+	for i, v := range act {
+		if v == "Иност. язык" {
+			act[i] = act[i] + " " + act[i+1]
+			act = append(act[:i+1], act[i+2:]...)
+		}
+	}
 	return act
 }
+
+type actuallyTable struct {
+	date     string
+	lessons  []string
+	prepods  []string
+	kabinets []string
+}
+
 func actuallyShedule() {
 	sched := organizedChanges(handleMainSchedule(siteURL, "Расписание занятий на 1 семестр", "mainSchedule.xlsx"))
 	chen := organizedChanges(handleChangesSchedule(siteURL, "Изменения в расписании", "changesSchedule.xlsx"))
-	//lenn := len(chen) - 1
-	for i := 0; i <= len(chen)-1; i++ {
-		needC := 0
-		if chen[i] == "-" {
-			needC = 2
-		}
-		if needC != 0 {
-			needC--
-			continue
+
+	scheduleTable := actuallyTable{}
+
+	for _, v := range sched {
+		if strings.HasSuffix(v, ".") {
+			scheduleTable.prepods = append(scheduleTable.prepods, v)
 		} else {
-			sched[i] = chen[i]
+			scheduleTable.lessons = append(scheduleTable.lessons, v)
+
 		}
+		scheduleTable.kabinets = append(scheduleTable.kabinets, "хз")
 
 	}
 	fmt.Println(sched)
+	fmt.Println(chen)
+	fmt.Println(scheduleTable)
+
+	for i := 0; i < len(chen); i++ {
+		item := chen[i]
+
+		if strings.Contains(item, "ауд.") && i < len(scheduleTable.kabinets) {
+			scheduleTable.kabinets[i-2] = item
+			continue
+		}
+		if strings.Contains(item, "ауд.") && i > len(scheduleTable.kabinets) {
+			scheduleTable.kabinets = append(scheduleTable.kabinets, item)
+			continue
+		}
+
+		if strings.HasSuffix(item, ".") && i < len(scheduleTable.prepods) {
+			scheduleTable.prepods[i-1] = item
+			continue
+		}
+		if strings.HasSuffix(item, ".") && i > len(scheduleTable.prepods) {
+			scheduleTable.prepods = append(scheduleTable.prepods, item)
+			continue
+		}
+		if !strings.Contains(item, "ауд.") && !strings.HasSuffix(item, ".") && item != "-" && i < len(scheduleTable.lessons) {
+			scheduleTable.lessons[i] = item
+			continue
+		}
+		if !strings.Contains(item, "ауд.") && !strings.HasSuffix(item, ".") && item != "-" && i > len(scheduleTable.lessons) {
+			scheduleTable.lessons = append(scheduleTable.lessons, item)
+			continue
+		}
+		if item == "-" {
+			continue
+		}
+	}
+	fmt.Println(scheduleTable.lessons)
+	fmt.Println(scheduleTable.prepods)
+	fmt.Println(scheduleTable.kabinets)
 }

@@ -35,6 +35,7 @@ func main() {
 
 	updates := bot.GetUpdatesChan(u)
 	actuallyShedule()
+
 	for {
 
 		handleUpdate(<-updates)
