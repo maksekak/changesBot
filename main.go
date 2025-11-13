@@ -59,14 +59,18 @@ func handleMessage(message *tgbotapi.Message) {
 	if user == nil {
 		return
 	}
-	switch text {
-	case "/mainschedule":
-		sched := organizedChanges(handleMainSchedule(siteURL, "Расписание занятий на 1 семестр", "mainSchedule.xlsx"))
+
+	if text == "/mainschedule" || text == "/mainschedule@collegeChangesBot" {
+		sched := organizedChanges(handleMainSchedule(siteURL, "Расписание занятий на 1 семестр", "mainSchedule.xlsx", GetWeekday(0)))
 		o := strings.Join(sched, "\n")
 		msg := tgbotapi.NewMessage(message.Chat.ID, o)
 		bot.Send(msg)
-	case "/changes":
-		chen := organizedChanges(handleChangesSchedule(siteURL, "Изменения в расписании", "changesSchedule.xlsx"))
+	}
+
+	if text == "/changes" || text == "/changes@collegeChangesBot" {
+		chen, day := handleChangesSchedule(siteURL, "Изменения в расписании", "changesSchedule.xlsx")
+		chen = organizedChanges(chen)
+		fmt.Print(day)
 		var out []string
 		for _, o := range chen {
 			if o == "-" || o == "ОТМЕНА" {
@@ -80,27 +84,37 @@ func handleMessage(message *tgbotapi.Message) {
 		t := strings.Join(out, "")
 		msg := tgbotapi.NewMessage(message.Chat.ID, t)
 		bot.Send(msg)
-	case "/actuallyschedule":
-		act := actuallyShedule()
-		ProcessStruct(&act)
+	}
 
-		headers := []string{"  Пары  ", "  Преподы ", "  Кабинеты "}
-		les := act.Lessons
-		prep := act.Prepods
-		kab := act.Kabinets
+	if text == "/actuallyschedule@collegeChangesBot" || text == "/actuallyschedule" {
+		act, err := actuallyShedule()
+		if err != nil {
+			msg := tgbotapi.NewMessage(message.Chat.ID, "изменений нет")
+			bot.Send(msg)
+			sched := organizedChanges(handleMainSchedule(siteURL, "Расписание занятий на 1 семестр", "mainSchedule.xlsx", GetWeekday(0)))
+			o := strings.Join(sched, "\n")
+			msg = tgbotapi.NewMessage(message.Chat.ID, o)
+			bot.Send(msg)
 
-		var tableData [][]string
-		for i := 0; i < len(prep); i++ {
-			tableData = append(tableData, []string{
-				les[i],
-				fmt.Sprintf("%s", prep[i]),
-				kab[i],
-			})
+		} else {
+			ProcessStruct(&act)
+
+			headers := []string{" Пары ", " Преподы"}
+			les := act.Lessons
+			prep := act.Prepods
+
+			var tableData [][]string
+			for i := 0; i < len(prep); i++ {
+				tableData = append(tableData, []string{
+					les[i],
+					prep[i],
+				})
+			}
+			table := buildMarkdownTable(headers, tableData)
+			msg := tgbotapi.NewMessage(message.Chat.ID, table)
+			msg.ParseMode = "Markdown"
+			bot.Send(msg)
 		}
-		table := buildMarkdownTable(headers, tableData)
-		msg := tgbotapi.NewMessage(message.Chat.ID, table)
-		msg.ParseMode = "Markdown"
-		bot.Send(msg)
 
 	}
 

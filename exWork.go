@@ -10,33 +10,6 @@ import (
 	"github.com/xuri/excelize/v2"
 )
 
-type schedule struct {
-	date  string
-	para1 string
-	para2 string
-	para3 string
-	para4 string
-	para5 string
-
-	kpara1 string
-	kpara2 string
-	kpara3 string
-	kpara4 string
-	kpara5 string
-}
-type changes struct {
-	pars    []string
-	prepods []string
-	kabs    []string
-}
-type actually struct {
-	para1 string
-	para2 string
-	para3 string
-	para4 string
-	para5 string
-}
-
 func GetWeekday(dayChange int) string {
 	weekdays := []string{
 		"Воскресенье",
@@ -73,14 +46,8 @@ func getDate(p int) string {
 	// Форматируем день с ведущим нулём (двузначное число)
 	return fmt.Sprintf("%d %s", day, monthName)
 }
-func trimToWord(s, word string) string {
-	index := strings.Index(s, word)
-	if index == -1 {
-		return "" // слово не найдено
-	}
-	return s[index:]
-}
-func handleMainSchedule(url, linkText, fileName string) []string {
+
+func handleMainSchedule(url, linkText, fileName, day string) []string {
 	GetSchedule(url, linkText, fileName, 3)
 	f, err := excelize.OpenFile(fileName)
 	if err != nil {
@@ -93,12 +60,13 @@ func handleMainSchedule(url, linkText, fileName string) []string {
 	}
 	var Schedule []string
 
-	tWeekDay := GetWeekday(-1)
+	tWeekDay := day
+
 	for i, row := range rows {
 		if strings.Contains(row[0], tWeekDay) {
 			for j, col := range rows[0] {
 				if strings.Contains(col, "3-ИС3") {
-					for k := range 5 {
+					for k := range 4 {
 						Schedule = append(Schedule, rows[i+k][j])
 					}
 
@@ -109,7 +77,7 @@ func handleMainSchedule(url, linkText, fileName string) []string {
 	}
 	return Schedule
 }
-func handleChangesSchedule(url, linkText, fileName string) []string {
+func handleChangesSchedule(url, linkText, fileName string) ([]string, string) {
 	GetSchedule(url, linkText, fileName, 0)
 	f, err := excelize.OpenFile(fileName)
 	if err != nil {
@@ -135,7 +103,9 @@ func handleChangesSchedule(url, linkText, fileName string) []string {
 
 		}
 	}
-	return Changes
+	day := extractDayOfWeek(rows[0][0])
+
+	return Changes, day
 }
 
 func organizedChanges(b []string) []string {
@@ -161,11 +131,30 @@ type actuallyTable struct {
 	Kabinets []string
 }
 
-func actuallyShedule() actuallyTable {
-	sched := organizedChanges(handleMainSchedule(siteURL, "Расписание занятий на 1 семестр", "mainSchedule.xlsx"))
-	chen := organizedChanges(handleChangesSchedule(siteURL, "Изменения в расписании", "changesSchedule.xlsx"))
+func extractDayOfWeek(text string) string {
+	// Список дней недели на русском (в нижнем регистре для сравнения)
+	days := []string{
+		"понедельник", "вторник", "среда", "четверг",
+		"пятница", "суббота", "воскресенье",
+	}
 
+	textLower := strings.ToLower(text) // приводим к нижнему регистру
+
+	for _, day := range days {
+		if strings.Contains(textLower, day) {
+			return strings.Title(day)
+		}
+	}
+	return "" // не найдено
+}
+func actuallyShedule() (actuallyTable, interface{}) {
 	scheduleTable := actuallyTable{}
+	c, day := handleChangesSchedule(siteURL, "Изменения в расписании", "changesSchedule.xlsx")
+	if day == "" {
+		return scheduleTable, "-"
+	}
+	chen := organizedChanges(c)
+	sched := organizedChanges(handleMainSchedule(siteURL, "Расписание занятий на 1 семестр", "mainSchedule.xlsx", day))
 
 	for _, v := range sched {
 		if strings.HasSuffix(v, ".") {
@@ -208,7 +197,7 @@ func actuallyShedule() actuallyTable {
 	}
 
 	scheduleTable.Kabinets = scheduleTable.Kabinets[:len(scheduleTable.Lessons)]
-	return scheduleTable
+	return scheduleTable, nil
 }
 func buildMarkdownTable(headers []string, data [][]string) string {
 	var lines []string
@@ -233,14 +222,14 @@ func buildMarkdownTable(headers []string, data [][]string) string {
 	for i, header := range headers {
 		escapedHeader := escapeMarkdown(header)
 		paddedHeader := padToWidth(escapedHeader, colWidths[i])
-		headerLine += " " + paddedHeader + " |"
+		headerLine += "" + paddedHeader + "|"
 	}
 	lines = append(lines, headerLine)
 
 	// Шаг 3: Формируем разделительную строку
 	sepLine := "|"
 	for width := range colWidths {
-		sepLine += strings.Repeat("-", colWidths[width]+2) + "|" // +2 для пробелов по краям
+		sepLine += strings.Repeat("-", colWidths[width]) + "|" // +2 для пробелов по краям
 	}
 	lines = append(lines, sepLine)
 
@@ -250,7 +239,7 @@ func buildMarkdownTable(headers []string, data [][]string) string {
 		for i, cell := range row {
 			escapedCell := escapeMarkdown(cell)
 			paddedCell := padToWidth(escapedCell, colWidths[i])
-			rowLine += " " + paddedCell + " |"
+			rowLine += "" + paddedCell + "|"
 		}
 		lines = append(lines, rowLine)
 	}

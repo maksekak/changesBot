@@ -76,59 +76,6 @@ func getText(n *html.Node) string {
 	return strings.TrimSpace(text)
 }
 
-// convertToGoogleExportURL преобразует обычный URL Google Таблиц в URL для экспорта в формате XLSX
-/*func convertToGoogleExportURL(originalURL string) (string, error) {
-	// Проверяем, что URL содержит нужный домен
-	if !strings.Contains(originalURL, "docs.google.com/spreadsheets/d/") {
-		return "", fmt.Errorf("URL не является ссылкой на Google Таблицы: %s", originalURL)
-	}
-
-	// Извлекаем ID таблицы (между /d/ и следующим / или /edit)
-	idStart := strings.Index(originalURL, "/d/") + 3
-	if idStart == -1 {
-		return "", fmt.Errorf("не удалось извлечь ID таблицы из URL")
-	}
-
-	// Ищем позицию /edit или следующего / после /d/
-	editPos := strings.Index(originalURL[idStart:], "/edit")
-	slashPos := strings.Index(originalURL[idStart:], "/")
-
-	var idEnd int
-	if editPos != -1 && slashPos != -1 {
-		// Выбираем минимальную позицию между /edit и /
-		idEnd = idStart + min(editPos, slashPos)
-	} else if editPos != -1 {
-		idEnd = idStart + editPos
-	} else if slashPos != -1 {
-		idEnd = idStart + slashPos
-	} else {
-		idEnd = len(originalURL)
-	}
-
-	tableID := originalURL[idStart:idEnd]
-
-	// Ищем gid (номер листа) после #gid=
-	gid := ""
-	gidPos := strings.Index(originalURL, "#gid=")
-	if gidPos != -1 {
-		gid = originalURL[gidPos+5:] // пропускаем "#gid="
-		// обрезаем по первому & или концу строки
-		andPos := strings.Index(gid, "&")
-		if andPos != -1 {
-			gid = gid[:andPos]
-		}
-	}
-
-	// Формируем URL экспорта
-	exportURL := fmt.Sprintf("https://docs.google.com/spreadsheets/d/%s/export?format=xlsx", tableID)
-	if gid != "" {
-		exportURL += "&gid=" + gid
-	}
-
-	return exportURL, nil
-}*/
-
-// Вспомогательная функция для нахождения минимума двух чисел
 func min(a, b int) int {
 	if a < b {
 		return a
