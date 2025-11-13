@@ -1,4 +1,4 @@
-module bot
+module changesBotBuild
 
 go 1.25.3
 

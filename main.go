@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"log"
 	"os"
 	"strings"
@@ -35,7 +34,7 @@ func main() {
 	u.Timeout = 60
 
 	updates := bot.GetUpdatesChan(u)
-
+	actuallyShedule()
 	for {
 
 		handleUpdate(<-updates)
@@ -59,23 +58,28 @@ func handleMessage(message *tgbotapi.Message) {
 	if user == nil {
 		return
 	}
-	if text == "/changes" || text == "/changes@collegeChangesBot" {
-		temp := getChanges("3-ИС3", "Изменения в расписании")
-		fmt.Println(temp)
-		if temp == "" {
-			msgg := tgbotapi.NewMessage(message.Chat.ID, "Изменений нет")
-			bot.Send(msgg)
-			c, _ := FindRowByGroup("scheduleFile.xlsx", "3-ИС3", 0)
-			t := strings.Join(c, "\n")
-			msg := tgbotapi.NewMessage(message.Chat.ID, t)
-			bot.Send(msg)
-		} else {
-			msgg := tgbotapi.NewMessage(message.Chat.ID, "Изменения")
-			bot.Send(msgg)
-			msg := tgbotapi.NewMessage(message.Chat.ID, trimToWord(temp, "1 пара"))
-			bot.Send(msg)
-		}
+	if text == "/mainschedule" {
+		sched := organizedChanges(handleMainSchedule(siteURL, "Расписание занятий на 1 семестр", "mainSchedule.xlsx"))
+		o := strings.Join(sched, "\n")
+		msg := tgbotapi.NewMessage(message.Chat.ID, o)
+		bot.Send(msg)
+	}
 
+	if text == "/changes" {
+		chen := organizedChanges(handleChangesSchedule(siteURL, "Изменения в расписании", "changesSchedule.xlsx"))
+		var out []string
+		for _, o := range chen {
+			if o == "-" || o == "ОТМЕНА" {
+				o = o + "\n\n"
+				out = append(out, o)
+			} else {
+				o = o + "\n"
+				out = append(out, o)
+			}
+		}
+		t := strings.Join(out, "")
+		msg := tgbotapi.NewMessage(message.Chat.ID, t)
+		bot.Send(msg)
 	}
 	// Print to console
 	log.Printf("%s wrote %s", user.FirstName, text)

@@ -77,7 +77,7 @@ func getText(n *html.Node) string {
 }
 
 // convertToGoogleExportURL преобразует обычный URL Google Таблиц в URL для экспорта в формате XLSX
-func convertToGoogleExportURL(originalURL string) (string, error) {
+/*func convertToGoogleExportURL(originalURL string) (string, error) {
 	// Проверяем, что URL содержит нужный домен
 	if !strings.Contains(originalURL, "docs.google.com/spreadsheets/d/") {
 		return "", fmt.Errorf("URL не является ссылкой на Google Таблицы: %s", originalURL)
@@ -126,7 +126,7 @@ func convertToGoogleExportURL(originalURL string) (string, error) {
 	}
 
 	return exportURL, nil
-}
+}*/
 
 // Вспомогательная функция для нахождения минимума двух чисел
 func min(a, b int) int {
@@ -135,51 +135,58 @@ func min(a, b int) int {
 	}
 	return b
 }
-func convertToGoogleExportURLForThirdSheet(originalURL string) (string, error) {
+func convertToGoogleExportURL(originalURL string, sheetID int) (string, error) {
 	// Проверяем, что URL содержит нужный домен
 	if !strings.Contains(originalURL, "docs.google.com/spreadsheets/d/") {
 		return "", fmt.Errorf("URL не является ссылкой на Google Таблицы: %s", originalURL)
 	}
 
-	// Извлекаем ID таблицы (между /d/ и следующим / или /edit)
-	idStart := strings.Index(originalURL, "/d/") + 3
+	// Находим позицию начала ID таблицы (/d/)
+	idStart := strings.Index(originalURL, "/d/") + len("/d/")
 	if idStart == -1 {
 		return "", fmt.Errorf("не удалось извлечь ID таблицы из URL")
 	}
 
 	// Ищем позицию /edit или следующего / после /d/
-	editPos := strings.Index(originalURL[idStart:], "/edit")
-	slashPos := strings.Index(originalURL[idStart:], "/")
+	remainingURL := originalURL[idStart:]
+	editPos := strings.Index(remainingURL, "/edit")
+	slashPos := strings.Index(remainingURL, "/")
 
 	var idEnd int
-	if editPos != -1 && slashPos != -1 {
+	switch {
+	case editPos != -1 && slashPos != -1:
 		// Выбираем минимальную позицию между /edit и /
 		idEnd = idStart + min(editPos, slashPos)
-	} else if editPos != -1 {
+	case editPos != -1:
 		idEnd = idStart + editPos
-	} else if slashPos != -1 {
+	case slashPos != -1:
 		idEnd = idStart + slashPos
-	} else {
+	default:
 		idEnd = len(originalURL)
 	}
 
 	tableID := originalURL[idStart:idEnd]
 
-	exportURL := fmt.Sprintf("https://docs.google.com/spreadsheets/d/%s/export?format=xlsx&gid=254196325", tableID)
+	// Формируем URL экспорта с указанным sheetID (gid)
+	exportURL := fmt.Sprintf(
+		"https://docs.google.com/spreadsheets/d/%s/export?format=xlsx&gid=%d",
+		tableID,
+		sheetID,
+	)
 
 	return exportURL, nil
 }
 
 // DownloadFile скачивает файл и сохраняет его с расширением .xlsx
-func DownloadFile(fileURL, outputDir, fileName string) (string, error) {
+func DownloadFile(fileURL, outputDir, fileName string) error {
 	resp, err := http.Get(fileURL)
 	if err != nil {
-		return "", fmt.Errorf("ошибка загрузки файла: %w", err)
+		return fmt.Errorf("ошибка загрузки файла: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("неудачный статус при загрузке: %d", resp.StatusCode)
+		return fmt.Errorf("неудачный статус при загрузке: %d", resp.StatusCode)
 	}
 
 	// Определяем имя файла из URL (после /export?)
@@ -190,15 +197,38 @@ func DownloadFile(fileURL, outputDir, fileName string) (string, error) {
 	// Создаём файл для записи
 	file, err := os.Create(filePath)
 	if err != nil {
-		return "", fmt.Errorf("ошибка создания файла: %w", err)
+		return fmt.Errorf("ошибка создания файла: %w", err)
 	}
 	defer file.Close()
 
 	// Копируем данные
 	_, err = io.Copy(file, resp.Body)
 	if err != nil {
-		return "", fmt.Errorf("ошибка записи файла: %w", err)
+		return fmt.Errorf("ошибка записи файла: %w", err)
 	}
 
-	return filePath, nil
+	return nil
+}
+func GetSchedule(url, linkName, fileName string, sID int) {
+	excelLink, err := FindDoc(url, linkName)
+	if err != nil {
+		fmt.Printf("Ошибка поиска второй ссылки: %v\n", err)
+
+	}
+	fmt.Printf("Найденная вторая ссылка: %s\n", excelLink)
+
+	// 2. Преобразуем URL Google Таблиц в URL экспорта
+	exportURL, err := convertToGoogleExportURL(excelLink, sID)
+	if err != nil {
+		fmt.Printf("Ошибка преобразования URL в формат экспорта: %v\n", err)
+
+	}
+	fmt.Printf("URL для экспорта: %s\n", exportURL)
+
+	// 3. Скачиваем файл
+	err = DownloadFile(exportURL, "", fileName)
+	if err != nil {
+		fmt.Printf("Ошибка скачивания файла: %v\n", err)
+
+	}
 }

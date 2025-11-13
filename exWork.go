@@ -8,7 +8,34 @@ import (
 	"github.com/xuri/excelize/v2"
 )
 
-func GetTodayWeekday() string {
+type schedule struct {
+	date  string
+	para1 string
+	para2 string
+	para3 string
+	para4 string
+	para5 string
+
+	kpara1 string
+	kpara2 string
+	kpara3 string
+	kpara4 string
+	kpara5 string
+}
+type changes struct {
+	pars    []string
+	prepods []string
+	kabs    []string
+}
+type actually struct {
+	para1 string
+	para2 string
+	para3 string
+	para4 string
+	para5 string
+}
+
+func GetWeekday(dayChange int) string {
 	weekdays := []string{
 		"Воскресенье",
 		"Понедельник",
@@ -18,139 +45,31 @@ func GetTodayWeekday() string {
 		"Пятница",
 		"Суббота",
 	}
-	return weekdays[time.Now().Weekday()]
+	// Получаем текущий день недели (0 = воскресенье, 6 = суббота)
+	today := int(time.Now().Weekday())
+	// Вычисляем индекс завтрашнего дня (с учётом перехода через неделю)
+	tomorrow := (today + dayChange) % 7
+
+	return weekdays[tomorrow]
 }
+func getDate(p int) string {
+	now := time.Now()
+	tomorrow := now.AddDate(0, 0, p)
 
-// FindRowByGroup ищет строку с groupName и убирает автоперенос в ячейках
-func FindRowByGroup(filename, groupName string, sheetNum int) ([]string, error) {
-	// Открываем файл Excel
-	f, err := excelize.OpenFile(filename)
-	if err != nil {
-		return nil, fmt.Errorf("ошибка открытия файла: %w", err)
-	}
-	defer f.Close()
+	day := tomorrow.Day()
+	month := tomorrow.Month()
 
-	// Получаем список всех листов
-	sheetList := f.GetSheetList()
-	if len(sheetList) == 0 {
-		return nil, fmt.Errorf("в файле нет листов")
+	// Массив с названиями месяцев в нижнем регистре
+	months := []string{
+		"январь", "февраль", "март", "апрель", "май", "июнь",
+		"июль", "август", "сентябрь", "октябрь", "ноябрь", "декабрь",
 	}
 
-	sheetName := sheetList[sheetNum]
-	// Сначала получаем все координаты ячеек
-	cols, _ := f.GetCols(sheetName)
-	rows, err := f.GetRows(sheetName)
-	if err != nil {
-		return nil, fmt.Errorf("ошибка чтения строк листа %q: %w", sheetName, err)
-	}
-	var o []string
-	// Поиск строки с groupName
-	for i, r := range rows {
-		if strings.Contains(r[0], GetTodayWeekday()) {
-			for j, c := range cols {
-				if strings.Contains(c[0], groupName) {
-					for k := range 5 {
-						if rows[i+k][j] == "" {
-							break
-						}
-						o = append(o, rows[k+1][1], rows[i+k][j], "\n")
+	// Получаем название месяца по номеру (Month() возвращает 1–12)
+	monthName := months[int(month)-1]
 
-					}
-
-				}
-			}
-		}
-
-	}
-	cleanedData := make([]string, len(o))
-
-	for i, item := range o {
-		// Удаляем все \n
-		cleanedData[i] = strings.ReplaceAll(item, "\n", "  ")
-		// Или удаляем \n только в конце: cleanedData[i] = strings.TrimSuffix(item, "\n")
-	}
-
-	return cleanedData, nil
-	//return nil, fmt.Errorf("группа %q не найдена в файле", groupName)
-}
-
-func FindCollByGroup(filename, groupName string, sheetNum int) ([]string, error) {
-	// Открываем файл Excel
-	f, err := excelize.OpenFile(filename)
-	if err != nil {
-		return nil, fmt.Errorf("ошибка открытия файла: %w", err)
-	}
-	defer f.Close()
-
-	// Получаем список всех листов
-	sheetList := f.GetSheetList()
-	if len(sheetList) == 0 {
-		return nil, fmt.Errorf("в файле нет листов")
-	}
-
-	sheetName := sheetList[sheetNum]
-	// Сначала получаем все координаты ячеек
-	cols, err := f.GetRows(sheetName)
-	if err != nil {
-		return nil, fmt.Errorf("ошибка чтения столбов листа %q: %w", sheetName, err)
-	}
-
-	// Поиск строки с groupName
-	for _, col := range cols {
-		for _, cell := range col {
-			if strings.EqualFold(cell, groupName) {
-				return col, nil
-			}
-
-		}
-	}
-
-	return nil, fmt.Errorf("группа %q не найдена в файле", groupName)
-}
-
-func getChanges(name, linkText string) string {
-	// 1. Находим ВТОРУЮ ссылку по тексту
-	excelLink, err := FindDoc(siteURL, linkText)
-	if err != nil {
-		fmt.Printf("Ошибка поиска второй ссылки: %v\n", err)
-
-	}
-	fmt.Printf("Найденная вторая ссылка: %s\n", excelLink)
-
-	// 2. Преобразуем URL Google Таблиц в URL экспорта
-	exportURL, err := convertToGoogleExportURL(excelLink)
-	if err != nil {
-		fmt.Printf("Ошибка преобразования URL в формат экспорта: %v\n", err)
-
-	}
-	fmt.Printf("URL для экспорта: %s\n", exportURL)
-
-	// 3. Скачиваем файл
-	filePath, err := DownloadFile(exportURL, outputDir, "changesFile.xlsx")
-	if err != nil {
-		fmt.Printf("Ошибка скачивания файла: %v\n", err)
-
-	}
-
-	fmt.Printf("Файл успешно сохранён: %s\n", filePath)
-	list, _ := FindRowByGroup("changesFile.xlsx", name, 0)
-	fmt.Print(list)
-
-	fmt.Println("")
-	var outputList []string
-	for i, l := range list {
-		l = strings.ReplaceAll(l, "\r", " ")
-		preparedValue := strings.ReplaceAll(l, "\n", " ")
-		if preparedValue == "" {
-			outputList = append(outputList, fmt.Sprintf("%d пара без изм.", i))
-		} else {
-			temp := fmt.Sprintf("%d пара: %s", i, preparedValue)
-			outputList = append(outputList, temp)
-		}
-	}
-
-	return strings.Join(outputList, "\n")
-
+	// Форматируем день с ведущим нулём (двузначное число)
+	return fmt.Sprintf("%d %s", day, monthName)
 }
 func trimToWord(s, word string) string {
 	index := strings.Index(s, word)
@@ -158,4 +77,102 @@ func trimToWord(s, word string) string {
 		return "" // слово не найдено
 	}
 	return s[index:]
+}
+func handleMainSchedule(url, linkText, fileName string) []string {
+	GetSchedule(url, linkText, fileName, 3)
+	f, err := excelize.OpenFile(fileName)
+	if err != nil {
+		fmt.Print(err)
+	}
+	sheets := f.GetSheetList()
+	rows, err := f.GetRows(sheets[0])
+	if err != nil {
+		fmt.Print(err)
+	}
+	var Schedule []string
+
+	tWeekDay := GetWeekday(0)
+	for i, row := range rows {
+		if strings.Contains(row[0], tWeekDay) {
+			for j, col := range rows[0] {
+				if strings.Contains(col, "3-ИС3") {
+					for k := range 5 {
+						Schedule = append(Schedule, rows[i+k][j])
+					}
+
+				}
+			}
+		}
+
+	}
+	return Schedule
+}
+func handleChangesSchedule(url, linkText, fileName string) []string {
+	GetSchedule(url, linkText, fileName, 0)
+	f, err := excelize.OpenFile(fileName)
+	if err != nil {
+		fmt.Print(err)
+	}
+	sheets := f.GetSheetList()
+	rows, err := f.GetRows(sheets[0])
+	if err != nil {
+		fmt.Print(err)
+	}
+	var temp []string
+	var Changes []string
+	for i, row := range rows {
+		if strings.Contains(row[0], "3-ИС3") {
+			for _, col := range rows[i] {
+				if col == "" {
+					temp = append(temp, "-")
+					continue
+				}
+				temp = append(temp, col)
+				Changes = temp[1:]
+			}
+
+		}
+	}
+	return Changes
+}
+func cleanString(s []string) []string {
+	var result []string
+	for _, part := range s {
+		t := strings.ReplaceAll(part, "\n", " ")
+
+		result = append(result, t)
+	}
+	return result
+
+}
+func organizedChanges(b []string) []string {
+	var act []string
+	var d []string
+	for _, c := range b {
+		//if c == "-" {
+		//	continue
+		//}
+		d = strings.Split(c, "\n")
+		act = append(act, d...)
+	}
+	return act
+}
+func actuallyShedule() {
+	sched := organizedChanges(handleMainSchedule(siteURL, "Расписание занятий на 1 семестр", "mainSchedule.xlsx"))
+	chen := organizedChanges(handleChangesSchedule(siteURL, "Изменения в расписании", "changesSchedule.xlsx"))
+	//lenn := len(chen) - 1
+	for i := 0; i <= len(chen)-1; i++ {
+		needC := 0
+		if chen[i] == "-" {
+			needC = 2
+		}
+		if needC != 0 {
+			needC--
+			continue
+		} else {
+			sched[i] = chen[i]
+		}
+
+	}
+	fmt.Println(sched)
 }
