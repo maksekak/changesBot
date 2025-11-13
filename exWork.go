@@ -2,6 +2,8 @@ package main
 
 import (
 	"fmt"
+	"reflect"
+
 	"strings"
 	"time"
 
@@ -91,7 +93,7 @@ func handleMainSchedule(url, linkText, fileName string) []string {
 	}
 	var Schedule []string
 
-	tWeekDay := GetWeekday(0)
+	tWeekDay := GetWeekday(-1)
 	for i, row := range rows {
 		if strings.Contains(row[0], tWeekDay) {
 			for j, col := range rows[0] {
@@ -135,16 +137,7 @@ func handleChangesSchedule(url, linkText, fileName string) []string {
 	}
 	return Changes
 }
-func cleanString(s []string) []string {
-	var result []string
-	for _, part := range s {
-		t := strings.ReplaceAll(part, "\n", " ")
 
-		result = append(result, t)
-	}
-	return result
-
-}
 func organizedChanges(b []string) []string {
 	var act []string
 	var d []string
@@ -163,13 +156,12 @@ func organizedChanges(b []string) []string {
 }
 
 type actuallyTable struct {
-	date     string
-	lessons  []string
-	prepods  []string
-	kabinets []string
+	Lessons  []string
+	Prepods  []string
+	Kabinets []string
 }
 
-func actuallyShedule() {
+func actuallyShedule() actuallyTable {
 	sched := organizedChanges(handleMainSchedule(siteURL, "Расписание занятий на 1 семестр", "mainSchedule.xlsx"))
 	chen := organizedChanges(handleChangesSchedule(siteURL, "Изменения в расписании", "changesSchedule.xlsx"))
 
@@ -177,51 +169,155 @@ func actuallyShedule() {
 
 	for _, v := range sched {
 		if strings.HasSuffix(v, ".") {
-			scheduleTable.prepods = append(scheduleTable.prepods, v)
+			scheduleTable.Prepods = append(scheduleTable.Prepods, v)
 		} else {
-			scheduleTable.lessons = append(scheduleTable.lessons, v)
+			scheduleTable.Lessons = append(scheduleTable.Lessons, v)
 
 		}
-		scheduleTable.kabinets = append(scheduleTable.kabinets, "хз")
+		scheduleTable.Kabinets = append(scheduleTable.Kabinets, "хз")
 
 	}
-	fmt.Println(sched)
-	fmt.Println(chen)
-	fmt.Println(scheduleTable)
-
+	l, p, k := 0, 0, 0
 	for i := 0; i < len(chen); i++ {
 		item := chen[i]
 
-		if strings.Contains(item, "ауд.") && i < len(scheduleTable.kabinets) {
-			scheduleTable.kabinets[i-2] = item
-			continue
-		}
-		if strings.Contains(item, "ауд.") && i > len(scheduleTable.kabinets) {
-			scheduleTable.kabinets = append(scheduleTable.kabinets, item)
+		if strings.Contains(item, "ауд.") {
+			scheduleTable.Kabinets[k] = item
+			k++
 			continue
 		}
 
-		if strings.HasSuffix(item, ".") && i < len(scheduleTable.prepods) {
-			scheduleTable.prepods[i-1] = item
+		if strings.HasSuffix(item, ".") {
+			scheduleTable.Prepods[p] = item
+			p++
 			continue
 		}
-		if strings.HasSuffix(item, ".") && i > len(scheduleTable.prepods) {
-			scheduleTable.prepods = append(scheduleTable.prepods, item)
+
+		if !strings.Contains(item, "ауд.") && !strings.HasSuffix(item, ".") && item != "-" {
+			scheduleTable.Lessons[l] = item
+			l++
 			continue
 		}
-		if !strings.Contains(item, "ауд.") && !strings.HasSuffix(item, ".") && item != "-" && i < len(scheduleTable.lessons) {
-			scheduleTable.lessons[i] = item
-			continue
-		}
-		if !strings.Contains(item, "ауд.") && !strings.HasSuffix(item, ".") && item != "-" && i > len(scheduleTable.lessons) {
-			scheduleTable.lessons = append(scheduleTable.lessons, item)
-			continue
-		}
+
 		if item == "-" {
+			k++
+			p++
+			l++
 			continue
 		}
 	}
-	fmt.Println(scheduleTable.lessons)
-	fmt.Println(scheduleTable.prepods)
-	fmt.Println(scheduleTable.kabinets)
+
+	scheduleTable.Kabinets = scheduleTable.Kabinets[:len(scheduleTable.Lessons)]
+	return scheduleTable
+}
+func buildMarkdownTable(headers []string, data [][]string) string {
+	var lines []string
+
+	// Шаг 1: Определяем максимальную ширину для каждого столбца
+	colWidths := make([]int, len(headers))
+	for i, header := range headers {
+		colWidths[i] = len([]rune(escapeMarkdown(header)))
+	}
+
+	for _, row := range data {
+		for i, cell := range row {
+			cellWidth := len([]rune(escapeMarkdown(cell)))
+			if cellWidth > colWidths[i] {
+				colWidths[i] = cellWidth
+			}
+		}
+	}
+
+	// Шаг 2: Формируем строку заголовков
+	headerLine := "|"
+	for i, header := range headers {
+		escapedHeader := escapeMarkdown(header)
+		paddedHeader := padToWidth(escapedHeader, colWidths[i])
+		headerLine += " " + paddedHeader + " |"
+	}
+	lines = append(lines, headerLine)
+
+	// Шаг 3: Формируем разделительную строку
+	sepLine := "|"
+	for width := range colWidths {
+		sepLine += strings.Repeat("-", colWidths[width]+2) + "|" // +2 для пробелов по краям
+	}
+	lines = append(lines, sepLine)
+
+	// Шаг 4: Формируем строки данных
+	for _, row := range data {
+		rowLine := "|"
+		for i, cell := range row {
+			escapedCell := escapeMarkdown(cell)
+			paddedCell := padToWidth(escapedCell, colWidths[i])
+			rowLine += " " + paddedCell + " |"
+		}
+		lines = append(lines, rowLine)
+	}
+
+	return fmt.Sprintf("```Актуальная-таблица\n%s\n```", strings.Join(lines, "\n"))
+}
+func padToWidth(s string, width int) string {
+	runeCount := len([]rune(s))
+	if runeCount >= width {
+		return s
+	}
+	spacesNeeded := width - runeCount
+	return s + strings.Repeat(" ", spacesNeeded)
+}
+func escapeMarkdown(text string) string {
+	return strings.ReplaceAll(text, "|", "\\|")
+}
+func TrimToFirstWord(s string) string {
+	words := strings.Fields(s)
+	if len(words) == 0 {
+		return ""
+	}
+	if len(words) == 1 {
+		return words[0]
+	}
+
+	// Проверяем второе слово: содержит ли цифры или оканчивается на точку
+	secondWord := words[1]
+	hasDigits := strings.ContainsAny(secondWord, "0123456789")
+	endsWithDot := len(secondWord) > 0 && secondWord[len(secondWord)-1] == '.'
+
+	if hasDigits || endsWithDot {
+		// Сохраняем первые два слова
+		return words[0] + " " + secondWord
+	}
+
+	// Иначе оставляем только первое слово
+	return words[0]
+}
+
+// processStruct обходит структуру и обрабатывает все слайсы строк []string
+func ProcessStruct(v interface{}) {
+	rv := reflect.ValueOf(v)
+
+	// Проверяем, что передан указатель на структуру
+	if rv.Kind() != reflect.Ptr {
+		panic("Expected a pointer")
+	}
+	elem := rv.Elem()
+	if elem.Kind() != reflect.Struct {
+		panic("Expected a struct")
+	}
+
+	// Проходим по всем полям структуры
+	for i := 0; i < elem.NumField(); i++ {
+		field := elem.Field(i)
+
+		// Обрабатываем только слайсы строк []string
+		if field.Kind() == reflect.Slice && field.Type().Elem().Kind() == reflect.String {
+			// Получаем текущий слайс
+			slice := field
+			for j := 0; j < slice.Len(); j++ {
+				// Берем строку, обрезаем, записываем обратно
+				str := slice.Index(j).String()
+				trimmed := TrimToFirstWord(str)
+				slice.Index(j).SetString(trimmed)
+			}
+		}
+	}
 }

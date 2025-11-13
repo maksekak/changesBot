@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"os"
 	"strings"
@@ -34,7 +35,6 @@ func main() {
 	u.Timeout = 60
 
 	updates := bot.GetUpdatesChan(u)
-	actuallyShedule()
 
 	for {
 
@@ -59,14 +59,13 @@ func handleMessage(message *tgbotapi.Message) {
 	if user == nil {
 		return
 	}
-	if text == "/mainschedule" {
+	switch text {
+	case "/mainschedule":
 		sched := organizedChanges(handleMainSchedule(siteURL, "Расписание занятий на 1 семестр", "mainSchedule.xlsx"))
 		o := strings.Join(sched, "\n")
 		msg := tgbotapi.NewMessage(message.Chat.ID, o)
 		bot.Send(msg)
-	}
-
-	if text == "/changes" {
+	case "/changes":
 		chen := organizedChanges(handleChangesSchedule(siteURL, "Изменения в расписании", "changesSchedule.xlsx"))
 		var out []string
 		for _, o := range chen {
@@ -81,7 +80,30 @@ func handleMessage(message *tgbotapi.Message) {
 		t := strings.Join(out, "")
 		msg := tgbotapi.NewMessage(message.Chat.ID, t)
 		bot.Send(msg)
+	case "/actuallyschedule":
+		act := actuallyShedule()
+		ProcessStruct(&act)
+
+		headers := []string{"  Пары  ", "  Преподы ", "  Кабинеты "}
+		les := act.Lessons
+		prep := act.Prepods
+		kab := act.Kabinets
+
+		var tableData [][]string
+		for i := 0; i < len(prep); i++ {
+			tableData = append(tableData, []string{
+				les[i],
+				fmt.Sprintf("%s", prep[i]),
+				kab[i],
+			})
+		}
+		table := buildMarkdownTable(headers, tableData)
+		msg := tgbotapi.NewMessage(message.Chat.ID, table)
+		msg.ParseMode = "Markdown"
+		bot.Send(msg)
+
 	}
+
 	// Print to console
 	log.Printf("%s wrote %s", user.FirstName, text)
 
