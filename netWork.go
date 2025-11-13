@@ -126,10 +126,8 @@ func convertToGoogleExportURL(originalURL string, sheetID int) (string, error) {
 
 // DownloadFile скачивает файл и сохраняет его с расширением .xlsx
 func DownloadFile(fileURL, outputDir, fileName string) error {
-	resp, err := http.Get(fileURL)
-	if err != nil {
-		return fmt.Errorf("ошибка загрузки файла: %w", err)
-	}
+	resp, _ := http.Get(fileURL)
+
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
