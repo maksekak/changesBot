@@ -1,0 +1,40 @@
+package main
+
+import "time"
+
+// Ссылки на прямые экспорты Google Таблиц (XLSX)
+const (
+	MainScheduleURL    = "https://docs.google.com/spreadsheets/d/1IUU0k0st5qsU3sFBfl8wazscE7R6_XHSAlsdJCwUa_4/export?format=xlsx&gid=2041886067"
+	ChangesScheduleURL = "https://docs.google.com/spreadsheets/d/1OpDaApQYxlwF9tYmzKbIr_zBt9AO-67aRqKKQXFyU7Q/export?format=xlsx&gid=0"
+)
+
+// Имена локальных кэш-файлов
+const (
+	MainCacheFile    = "mainSchedule.xlsx"
+	ChangesCacheFile = "changesSchedule.xlsx"
+)
+
+// Настройки кэша и рассылки
+const (
+	CacheTTL     = 6 * time.Hour // кэш обновляется не чаще раза в 6 часов
+	NotifyHour   = 20            // час рассылки расписания на завтра
+	NotifyMinute = 0             // минута рассылки
+)
+
+// Имена файлов настроек
+const (
+	GroupsFile   = "groups.json"
+	WeekStateFile = "week_state.json"
+)
+
+// Тип недели
+const (
+	WeekBlue = "blue"
+	WeekRed  = "red"
+)
+
+// Цвета заливки ячеек (Excel RGB в формате AARRGGBB)
+const (
+	ColorRed   = "FFFF0000" // красная неделя
+	ColorBlue  = "FF0000FF" // синяя неделя
+)
