@@ -5,11 +5,17 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"path/filepath"
+	"sync"
 	"time"
 
 	"github.com/xuri/excelize/v2"
 )
+
+var cacheMu sync.Mutex
+
+var httpClient = &http.Client{
+	Timeout: 15 * time.Second,
+}
 
 // getFirstSheetName возвращает имя первого листа в XLSX файле
 func getFirstSheetName(f *excelize.File) (string, error) {
@@ -20,9 +26,9 @@ func getFirstSheetName(f *excelize.File) (string, error) {
 	return sheets[0], nil
 }
 
-// downloadFile скачивает файл по URL и сохраняет локально
-func downloadFile(fileURL, outputDir, fileName string) error {
-	resp, err := http.Get(fileURL)
+// downloadFile скачивает файл по URL и сохраняет локально атомарно через временный файл
+func downloadFile(fileURL, fileName string) error {
+	resp, err := httpClient.Get(fileURL)
 	if err != nil {
 		return fmt.Errorf("ошибка запроса: %w", err)
 	}
@@ -32,16 +38,22 @@ func downloadFile(fileURL, outputDir, fileName string) error {
 		return fmt.Errorf("неудачный статус при загрузке: %d", resp.StatusCode)
 	}
 
-	filePath := filepath.Join(outputDir, fileName)
-	file, err := os.Create(filePath)
+	tmpFile := fileName + ".tmp"
+	file, err := os.Create(tmpFile)
 	if err != nil {
 		return fmt.Errorf("ошибка создания файла: %w", err)
 	}
-	defer file.Close()
 
-	_, err = io.Copy(file, resp.Body)
-	if err != nil {
+	if _, err = io.Copy(file, resp.Body); err != nil {
+		file.Close()
+		os.Remove(tmpFile)
 		return fmt.Errorf("ошибка записи файла: %w", err)
+	}
+	file.Close()
+
+	if err := os.Rename(tmpFile, fileName); err != nil {
+		os.Remove(tmpFile)
+		return fmt.Errorf("ошибка сохранения файла: %w", err)
 	}
 
 	return nil
@@ -56,20 +68,15 @@ func isCacheFresh(fileName string) bool {
 	return time.Since(info.ModTime()) < CacheTTL
 }
 
-// ensureMainSchedule гарантирует, что есть свежая копия основного расписания
-func ensureMainSchedule() error {
-	if isCacheFresh(MainCacheFile) {
-		return nil
-	}
-	fmt.Println("Кэш основного расписания устарел, скачиваю...")
-	return downloadFile(MainScheduleURL, "", MainCacheFile)
-}
-
 // ensureChangesSchedule гарантирует, что есть свежая копия таблицы изменений
+// (потокобезопасно, чтобы при массовой рассылке или одновременных запросах был только 1 запрос к Google)
 func ensureChangesSchedule() error {
+	cacheMu.Lock()
+	defer cacheMu.Unlock()
+
 	if isCacheFresh(ChangesCacheFile) {
 		return nil
 	}
 	fmt.Println("Кэш таблицы изменений устарел, скачиваю...")
-	return downloadFile(ChangesScheduleURL, "", ChangesCacheFile)
+	return downloadFile(ChangesScheduleURL, ChangesCacheFile)
 }

@@ -6,10 +6,23 @@ import (
 	"time"
 )
 
-// FormatDaySchedule форматирует расписание на один день для вывода
-func FormatDaySchedule(groupName string, dayName string, date string, week string, lessons []Lesson, changes []ChangeEntry) string {
+// weekEmoji возвращает эмодзи для типа недели
+func weekEmoji(week string) string {
+	switch week {
+	case WeekBlue:
+		return "🔵"
+	case WeekRed:
+		return "🔴"
+	}
+	return "⚪"
+}
+
+// FormatDaySchedule форматирует расписание на один день в виде компактного списка,
+// который корректно отображается на экранах телефонов, с наложением актуальных изменений.
+func FormatDaySchedule(groupName string, dayName string, date string, week string, lessons []Lesson, changesData ChangesData) string {
 	var sb strings.Builder
 
+	weekIcon := weekEmoji(week)
 	weekLabel := ""
 	switch week {
 	case WeekBlue:
@@ -18,54 +31,121 @@ func FormatDaySchedule(groupName string, dayName string, date string, week strin
 		weekLabel = "красная"
 	}
 
-	sb.WriteString(fmt.Sprintf("Расписание на %s, %s (%s неделя)\n", dayName, date, weekLabel))
-	sb.WriteString(fmt.Sprintf("Группа: %s\n\n", groupName))
+	sb.WriteString(fmt.Sprintf("📅 Расписание на %s, %s (%s неделя %s)\n", dayName, date, weekLabel, weekIcon))
+	sb.WriteString(fmt.Sprintf("👥 Группа: %s\n\n", groupName))
 
-	if len(lessons) == 0 {
-		sb.WriteString("Пар нет.")
-		return sb.String()
-	}
+	// Проверяем, относятся ли изменения в таблице к целевой дате
+	changesMatchDate := changesData.DateHeader != "" &&
+		strings.Contains(strings.ToLower(changesData.DateHeader), strings.ToLower(date))
 
-	// Строим карту изменений по номеру пары
 	changeMap := make(map[int]ChangeEntry)
-	for _, c := range changes {
-		changeMap[c.PairNumber] = c
+	if changesMatchDate {
+		for _, c := range changesData.Entries {
+			changeMap[c.PairNumber] = c
+		}
 	}
 
+	// Отфильтруем пары по текущей неделе
+	var activeLessons []Lesson
 	for _, lesson := range lessons {
-		// Фильтруем по неделе
 		if lesson.Week != "" && lesson.Week != week {
 			continue
 		}
+		activeLessons = append(activeLessons, lesson)
+	}
 
-		sb.WriteString(fmt.Sprintf("%d. %s", lesson.Number, lesson.Subject))
+	if len(activeLessons) == 0 && len(changeMap) == 0 {
+		sb.WriteString("Пар нет.")
+		if changesData.DateHeader != "" && !changesMatchDate {
+			sb.WriteString(fmt.Sprintf("\n\nℹ️ В таблице изменений указана дата: %s.", changesData.DateHeader))
+		}
+		return sb.String()
+	}
+
+	pairIcons := []string{"1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣"}
+	appliedPairs := make(map[int]bool)
+
+	for _, lesson := range activeLessons {
+		icon := "•"
+		if lesson.Number >= 1 && lesson.Number <= 6 {
+			icon = pairIcons[lesson.Number-1]
+		}
+
+		timeStr := lesson.Time
+		if timeStr == "" {
+			timeStr = "—"
+		}
+
+		pairWeekIcon := "🔵🔴"
+		if lesson.Week == WeekBlue {
+			pairWeekIcon = "🔵"
+		} else if lesson.Week == WeekRed {
+			pairWeekIcon = "🔴"
+		}
+
+		line := fmt.Sprintf("%s %s — %s", icon, timeStr, lesson.Subject)
 		if lesson.Teacher != "" {
-			sb.WriteString(fmt.Sprintf(" — %s", lesson.Teacher))
+			line += fmt.Sprintf(" — %s", lesson.Teacher)
 		}
 		if lesson.Room != "" {
-			sb.WriteString(fmt.Sprintf(" — ауд. %s", lesson.Room))
+			line += fmt.Sprintf(" — ауд. %s", lesson.Room)
 		}
 
-		// Проверяем изменения
 		if change, ok := changeMap[lesson.Number]; ok {
+			appliedPairs[lesson.Number] = true
 			if IsCancellation(change.Content) {
-				sb.WriteString(" [ОТМЕНА]")
+				line += " ❌ [ОТМЕНА]"
 			} else {
-				sb.WriteString(fmt.Sprintf(" [ЗАМЕНА: %s]", change.Content))
+				line += fmt.Sprintf(" 🔄 [ЗАМЕНА: %s]", change.Content)
 			}
 		}
 
-		sb.WriteString("\n")
+		line += fmt.Sprintf(" [%s]", pairWeekIcon)
+		sb.WriteString(line + "\n")
+	}
+
+	// Добавляем пары из таблицы изменений, которых не было в основном расписании на этот день
+	for pairNum := 1; pairNum <= 6; pairNum++ {
+		if appliedPairs[pairNum] {
+			continue
+		}
+		change, ok := changeMap[pairNum]
+		if !ok {
+			continue
+		}
+		icon := pairIcons[pairNum-1]
+		if IsCancellation(change.Content) {
+			sb.WriteString(fmt.Sprintf("%s %d пара — ❌ [ОТМЕНА]\n", icon, pairNum))
+		} else {
+			sb.WriteString(fmt.Sprintf("%s %d пара — ➕ [ИЗМЕНЕНИЕ: %s]\n", icon, pairNum, change.Content))
+		}
+	}
+
+	sb.WriteString("\n")
+	if changesData.DateHeader == "" {
+		sb.WriteString("ℹ️ Таблица изменений не загружена или пуста.")
+	} else if !changesMatchDate {
+		sb.WriteString(fmt.Sprintf("ℹ️ Изменений на %s пока нет (в таблице изменений дата: %s).", date, changesData.DateHeader))
+	} else if len(changeMap) == 0 {
+		sb.WriteString(fmt.Sprintf("✅ Изменений на %s для группы %s нет.", date, groupName))
+	} else {
+		sb.WriteString(fmt.Sprintf("ℹ️ Изменения на %s наложены на основное расписание.", date))
 	}
 
 	return sb.String()
 }
 
-// GetTomorrowInfo возвращает название дня, дату и номер дня недели для завтра
-func GetTomorrowInfo() (dayName string, date string, weekday int) {
+// GetEffectiveScheduleDay возвращает день, дату и номер дня недели для отображения.
+// До 17:00 — сегодня, после 17:00 — завтра.
+func GetEffectiveScheduleDay() (dayName string, date string, weekday int) {
 	now := time.Now()
-	tomorrow := now.AddDate(0, 0, 1)
-	weekday = int(tomorrow.Weekday())
+
+	target := now
+	if now.Hour() >= 17 {
+		target = now.AddDate(0, 0, 1)
+	}
+
+	weekday = int(target.Weekday())
 
 	days := []string{
 		"Воскресенье",
@@ -84,16 +164,16 @@ func GetTomorrowInfo() (dayName string, date string, weekday int) {
 		"июля", "августа", "сентября", "октября", "ноября", "декабря",
 	}
 
-	date = fmt.Sprintf("%d %s", tomorrow.Day(), months[tomorrow.Month()-1])
+	date = fmt.Sprintf("%d %s", target.Day(), months[target.Month()-1])
 
 	return
 }
 
-// FormatScheduleForTomorrow собирает полное сообщение с расписанием на завтра
-func FormatScheduleForTomorrow(groupName string, schedule GroupSchedule, changes []ChangeEntry, week string) string {
-	_, date, weekday := GetTomorrowInfo()
+// FormatScheduleForTomorrow собирает полное сообщение с расписанием на сегодня/завтра
+// (до 17:00 — сегодня, после 17:00 — завтра)
+func FormatScheduleForTomorrow(groupName string, schedule GroupSchedule, changesData ChangesData, week string) string {
+	_, date, weekday := GetEffectiveScheduleDay()
 
-	// Превращаем номер дня недели в название (понедельник = 1, воскресенье = 0)
 	dayNames := map[int]string{
 		1: "Понедельник",
 		2: "Вторник",
@@ -107,5 +187,5 @@ func FormatScheduleForTomorrow(groupName string, schedule GroupSchedule, changes
 	ruDay := dayNames[weekday]
 	lessons := schedule.Days[ruDay]
 
-	return FormatDaySchedule(groupName, ruDay, date, week, lessons, changes)
+	return FormatDaySchedule(groupName, ruDay, date, week, lessons, changesData)
 }

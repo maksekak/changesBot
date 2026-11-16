@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/xuri/excelize/v2"
@@ -13,84 +14,118 @@ type ChangeEntry struct {
 	Content    string
 }
 
-// ParseChanges парсит таблицу изменений для указанной группы
-func ParseChanges(groupName string, dayOfWeek string) ([]ChangeEntry, error) {
+// ChangesData содержит заголовок даты из таблицы изменений и список изменений группы
+type ChangesData struct {
+	DateHeader string
+	Entries    []ChangeEntry
+}
+
+// normalizeChangeContent приводит многострочный текст ячейки изменений к аккуратной строке
+func normalizeChangeContent(raw string) string {
+	raw = strings.ReplaceAll(raw, "\r\n", "\n")
+	raw = strings.ReplaceAll(raw, "\r", "\n")
+	lines := strings.Split(raw, "\n")
+	var parts []string
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line != "" {
+			parts = append(parts, line)
+		}
+	}
+	return strings.Join(parts, " — ")
+}
+
+// ParseChanges загружает (с кэшированием) и парсит таблицу изменений для указанной группы
+func ParseChanges(groupName string, _ string) (ChangesData, error) {
 	if err := ensureChangesSchedule(); err != nil {
-		return nil, fmt.Errorf("ошибка кэша изменений: %w", err)
+		return ChangesData{}, fmt.Errorf("ошибка кэша изменений: %w", err)
 	}
 
 	f, err := excelize.OpenFile(ChangesCacheFile)
 	if err != nil {
-		return nil, fmt.Errorf("ошибка открытия файла изменений: %w", err)
+		return ChangesData{}, fmt.Errorf("ошибка открытия файла изменений: %w", err)
 	}
 	defer f.Close()
 
 	sheetName, err := getFirstSheetName(f)
 	if err != nil {
-		return nil, fmt.Errorf("ошибка получения листа: %w", err)
+		return ChangesData{}, fmt.Errorf("ошибка получения листа: %w", err)
 	}
 
 	rows, err := f.GetRows(sheetName)
 	if err != nil {
-		return nil, fmt.Errorf("ошибка чтения строк изменений: %w", err)
+		return ChangesData{}, fmt.Errorf("ошибка чтения строк изменений: %w", err)
 	}
 
-	if len(rows) < 3 {
-		return nil, nil
+	if len(rows) < 2 {
+		return ChangesData{}, nil
 	}
 
-	// Находим строку группы в столбце A
+	// Первая строка — дата изменений, например "17 ноября (вторник)"
+	dateHeader := ""
+	if len(rows[0]) > 0 {
+		dateHeader = normalizeChangeContent(rows[0][0])
+		dateHeader = strings.ReplaceAll(dateHeader, " — ", " ")
+	}
+
+	// Находим строку заголовка с номерами пар ("Группа", "1", "2", ...)
+	headerIdx := 1
+	pairCols := make(map[int]int) // индекс колонки -> номер пары
+	for idx, row := range rows {
+		if len(row) > 0 && strings.EqualFold(strings.TrimSpace(row[0]), "Группа") {
+			headerIdx = idx
+			for colIdx := 1; colIdx < len(row); colIdx++ {
+				if num, convErr := strconv.Atoi(strings.TrimSpace(row[colIdx])); convErr == nil && num > 0 {
+					pairCols[colIdx] = num
+				}
+			}
+			break
+		}
+	}
+	if len(pairCols) == 0 {
+		for colIdx := 1; colIdx <= 6; colIdx++ {
+			pairCols[colIdx] = colIdx
+		}
+	}
+
+	// Ищем строку нужной группы (без учёта регистра)
+	targetGroup := strings.TrimSpace(groupName)
 	groupRow := -1
-	for i, row := range rows {
-		if len(row) > 0 && strings.TrimSpace(row[0]) == groupName {
+	for i := headerIdx + 1; i < len(rows); i++ {
+		if len(rows[i]) > 0 && strings.EqualFold(strings.TrimSpace(rows[i][0]), targetGroup) {
 			groupRow = i
 			break
 		}
 	}
 
-	if groupRow == -1 {
-		return nil, nil // группы нет в таблице изменений
+	result := ChangesData{
+		DateHeader: dateHeader,
 	}
 
-	// Столбец B-G (индексы 1-6) — пары 1-6
-	var changes []ChangeEntry
-	groupRowData := rows[groupRow]
+	if groupRow == -1 {
+		return result, nil // группы нет в таблице изменений
+	}
 
-	for pairIdx := 1; pairIdx <= 6 && pairIdx < len(groupRowData); pairIdx++ {
-		cellContent := strings.TrimSpace(groupRowData[pairIdx])
+	row := rows[groupRow]
+	for colIdx := 1; colIdx < len(row); colIdx++ {
+		pairNum, ok := pairCols[colIdx]
+		if !ok {
+			continue
+		}
+		cellContent := normalizeChangeContent(row[colIdx])
 		if cellContent == "" {
 			continue
 		}
-
-		changes = append(changes, ChangeEntry{
-			PairNumber: pairIdx,
+		result.Entries = append(result.Entries, ChangeEntry{
+			PairNumber: pairNum,
 			Content:    cellContent,
 		})
 	}
 
-	return changes, nil
-}
-
-// PairNumberFromLesson извлекает номер пары из строки (для сопоставления)
-func PairNumberFromLesson(text string) int {
-	// Извлекаем первое число из строки
-	var num int
-	_, err := fmt.Sscanf(text, "%d", &num)
-	if err != nil {
-		return 0
-	}
-	return num
+	return result, nil
 }
 
 // IsCancellation проверяет, является ли изменение отменой
 func IsCancellation(content string) bool {
 	return strings.Contains(strings.ToLower(content), "отмен")
-}
-
-// FormatChange форматирует изменение для вывода
-func FormatChange(change ChangeEntry) string {
-	if IsCancellation(change.Content) {
-		return fmt.Sprintf("%d пара: [ОТМЕНА]", change.PairNumber)
-	}
-	return fmt.Sprintf("%d пара: %s", change.PairNumber, change.Content)
 }

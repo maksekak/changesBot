@@ -49,13 +49,12 @@ func sendDailySchedule(bot *tgbotapi.BotAPI) {
 			continue
 		}
 
-		changes, err := ParseChanges(settings.GroupName, "")
+		changesData, err := ParseChanges(schedule.Group, "")
 		if err != nil {
 			log.Printf("Ошибка парсинга изменений для чата %d: %v", chatID, err)
-			changes = nil
 		}
 
-		msg := FormatScheduleForTomorrow(settings.GroupName, schedule, changes, week)
+		msg := FormatScheduleForTomorrow(schedule.Group, schedule, changesData, week)
 		sendTelegramMessage(bot, chatID, msg)
 	}
 }

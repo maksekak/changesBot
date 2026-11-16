@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strconv"
+	"strings"
 	"time"
 )
 
@@ -102,13 +104,36 @@ func saveWeekState(ws WeekState) error {
 	return os.WriteFile(WeekStateFile, data, 0644)
 }
 
-// setWeek устанавливает текущую неделю с привязкой к сегодняшней дате
+// setWeek устанавливает текущую неделю с привязкой к сегодняшней дате (обратная совместимость)
 func setWeek(week string) error {
+	return setWeekWithDate(time.Now().Format("2006-01-02"), week)
+}
+
+// setWeekWithDate устанавливает неделю с заданной датой отсчёта (формат YYYY-MM-DD)
+func setWeekWithDate(dateStr string, week string) error {
 	ws := WeekState{
-		ReferenceDate: time.Now().Format("2006-01-02"),
+		ReferenceDate: dateStr,
 		ReferenceWeek: week,
 	}
 	return saveWeekState(ws)
+}
+
+// parseDateDDMM парсит дату в формате ДД.ММ и возвращает YYYY-MM-DD (текущий год)
+func parseDateDDMM(s string) (string, error) {
+	parts := strings.Split(s, ".")
+	if len(parts) != 2 {
+		return "", fmt.Errorf("ожидается формат ДД.ММ, например 01.09")
+	}
+	day, err := strconv.Atoi(parts[0])
+	if err != nil || day < 1 || day > 31 {
+		return "", fmt.Errorf("некорректный день: %s", parts[0])
+	}
+	month, err := strconv.Atoi(parts[1])
+	if err != nil || month < 1 || month > 12 {
+		return "", fmt.Errorf("некорректный месяц: %s", parts[1])
+	}
+	year := time.Now().Year()
+	return fmt.Sprintf("%04d-%02d-%02d", year, month, day), nil
 }
 
 // getMonday возвращает дату понедельника недели, к которой относится переданная дата
@@ -126,7 +151,7 @@ func getMonday(t time.Time) time.Time {
 func getCurrentWeek() (string, error) {
 	ws := loadWeekState()
 	if ws.ReferenceDate == "" || ws.ReferenceWeek == "" {
-		return "", fmt.Errorf("неделя не установлена. Используйте /week blue или /week red")
+		return "", fmt.Errorf("неделя не установлена. Используйте /weekset ДД.ММ blue|red, например /weekset 01.09 blue")
 	}
 
 	refDate, err := time.Parse("2006-01-02", ws.ReferenceDate)

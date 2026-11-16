@@ -17,50 +17,66 @@ func handleCommand(message *tgbotapi.Message, bot *tgbotapi.BotAPI) {
 	log.Printf("%s (%d) wrote: %s", userName, chatID, text)
 
 	args := strings.Fields(text)
-	command := args[0]
+	command := strings.ToLower(args[0])
+	if idx := strings.Index(command, "@"); idx != -1 {
+		botMention := command[idx+1:]
+		if bot.Self.UserName != "" && !strings.EqualFold(botMention, bot.Self.UserName) {
+			return
+		}
+		command = command[:idx]
+	}
 
 	switch command {
-	case "/start", "/start@collegeChangesBot":
+	case "/start":
 		sendMessage(bot, chatID, `Привет! Я бот расписания колледжа.
 
 Команды:
-/setgroup <группа> — установить свою группу (например, /setgroup 4-NS1)
-/mygroup — показать свою группу
-/week blue|red — указать текущую неделю (дальше чередуется автоматически)
-/notify — включить/выключить ежедневную рассылку в 20:00
-/schedule — расписание на завтра с изменениями
+/setgroup <группа> — установить группу для этого чата (например, /setgroup 4-ИС3)
+/mygroup — показать текущую группу
+/groups — список доступных групп
+/weekset ДД.ММ blue|red — установить дату и цвет недели (например, /weekset 01.09 blue)
+/notify — включить/выключить ежедневную рассылку на завтра в 20:00
+/schedule — расписание с изменениями (до 17:00 на сегодня, после 17:00 на завтра)
 /help — эта справка`)
 
-	case "/help", "/help@collegeChangesBot":
+	case "/help":
 		sendMessage(bot, chatID, `Команды бота:
-/setgroup <группа> — установить свою группу
-/mygroup — показать свою группу
-/week blue|red — указать текущую неделю
+/setgroup <группа> — установить группу (например, /setgroup 4-ИС3)
+/mygroup — показать текущую группу
+/groups — список доступных групп
+/weekset ДД.ММ blue|red — установить дату и цвет недели
 /notify — вкл/выкл рассылку в 20:00
-/schedule — расписание на завтра`)
+/schedule — расписание с изменениями (до 17:00 сегодня, после 17:00 завтра)`)
 
-	case "/setgroup", "/setgroup@collegeChangesBot":
+	case "/groups":
+		sendMessage(bot, chatID, "Доступные группы: "+strings.Join(GetAvailableGroups(), ", "))
+
+	case "/setgroup":
 		if len(args) < 2 {
-			sendMessage(bot, chatID, "Укажите группу: /setgroup 4-NS1")
+			sendMessage(bot, chatID, "Укажите группу, например: /setgroup 4-ИС3\nДоступные группы: "+strings.Join(GetAvailableGroups(), ", "))
 			return
 		}
-		groupName := args[1]
-		if err := setGroup(chatID, groupName); err != nil {
+		schedule, err := GetHardcodedSchedule(args[1])
+		if err != nil {
+			sendMessage(bot, chatID, err.Error())
+			return
+		}
+		if err := setGroup(chatID, schedule.Group); err != nil {
 			log.Printf("Ошибка сохранения группы: %v", err)
 			sendMessage(bot, chatID, "Ошибка сохранения группы. Попробуйте позже.")
 			return
 		}
-		sendMessage(bot, chatID, fmt.Sprintf("Группа %s сохранена.", groupName))
+		sendMessage(bot, chatID, fmt.Sprintf("Группа %s сохранена.", schedule.Group))
 
-	case "/mygroup", "/mygroup@collegeChangesBot":
+	case "/mygroup":
 		groupName, ok := getGroup(chatID)
 		if !ok || groupName == "" {
 			sendMessage(bot, chatID, "Группа не установлена. Используйте /setgroup <группа>")
 			return
 		}
-		sendMessage(bot, chatID, fmt.Sprintf("Ваша группа: %s", groupName))
+		sendMessage(bot, chatID, fmt.Sprintf("Текущая группа: %s", groupName))
 
-	case "/week", "/week@collegeChangesBot":
+	case "/week":
 		if len(args) < 2 {
 			sendMessage(bot, chatID, "Укажите неделю: /week blue или /week red")
 			return
@@ -75,9 +91,32 @@ func handleCommand(message *tgbotapi.Message, bot *tgbotapi.BotAPI) {
 			sendMessage(bot, chatID, "Ошибка сохранения недели. Попробуйте позже.")
 			return
 		}
-		sendMessage(bot, chatID, fmt.Sprintf("Неделя установлена: %s. Далее неделя будет чередоваться автоматически каждые 7 дней.", week))
+		sendMessage(bot, chatID, fmt.Sprintf("Неделя установлена: %s. Далее неделя будет чередоваться автоматически каждый понедельник.", week))
 
-	case "/notify", "/notify@collegeChangesBot":
+	case "/weekset":
+		if len(args) < 3 {
+			sendMessage(bot, chatID, "Укажите дату и неделю: /weekset 01.09 blue")
+			return
+		}
+		dateStr := args[1]
+		week := strings.ToLower(args[2])
+		if week != WeekBlue && week != WeekRed {
+			sendMessage(bot, chatID, "Используйте /weekset ДД.ММ blue|red, например /weekset 01.09 blue")
+			return
+		}
+		refDate, err := parseDateDDMM(dateStr)
+		if err != nil {
+			sendMessage(bot, chatID, err.Error())
+			return
+		}
+		if err := setWeekWithDate(refDate, week); err != nil {
+			log.Printf("Ошибка сохранения недели: %v", err)
+			sendMessage(bot, chatID, "Ошибка сохранения недели. Попробуйте позже.")
+			return
+		}
+		sendMessage(bot, chatID, fmt.Sprintf("Неделя установлена: %s с даты %s. Далее неделя будет чередоваться автоматически каждый понедельник.", week, dateStr))
+
+	case "/notify":
 		enabled := toggleNotify(chatID)
 		if enabled {
 			sendMessage(bot, chatID, "Ежедневная рассылка включена. Буду присылать расписание на завтра в 20:00.")
@@ -85,7 +124,7 @@ func handleCommand(message *tgbotapi.Message, bot *tgbotapi.BotAPI) {
 			sendMessage(bot, chatID, "Ежедневная рассылка выключена.")
 		}
 
-	case "/schedule", "/schedule@collegeChangesBot", "/завтра", "/завтра@collegeChangesBot":
+	case "/schedule", "/завтра":
 		handleScheduleRequest(bot, chatID)
 
 	default:
@@ -108,23 +147,17 @@ func handleScheduleRequest(bot *tgbotapi.BotAPI, chatID int64) {
 
 	schedule, err := ParseMainSchedule(groupName)
 	if err != nil {
-		log.Printf("Ошибка парсинга расписания: %v", err)
-		sendMessage(bot, chatID, "Ошибка загрузки расписания. Попробуйте позже.")
+		log.Printf("Ошибка получения расписания: %v", err)
+		sendMessage(bot, chatID, err.Error())
 		return
 	}
 
-	_, _, _ = GetTomorrowInfo()
-
-	// Для изменений нам нужно знать номер пары, но в таблице изменений нет привязки к дню недели
-	// Поэтому загружаем все изменения для группы
-	changes, err := ParseChanges(groupName, "")
+	changesData, err := ParseChanges(schedule.Group, "")
 	if err != nil {
 		log.Printf("Ошибка парсинга изменений: %v", err)
-		// Не критично, продолжаем без изменений
-		changes = nil
 	}
 
-	msg := FormatScheduleForTomorrow(groupName, schedule, changes, week)
+	msg := FormatScheduleForTomorrow(schedule.Group, schedule, changesData, week)
 	sendMessage(bot, chatID, msg)
 }
 
