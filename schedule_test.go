@@ -50,13 +50,13 @@ func TestFormatDayScheduleWeeksAndChanges(t *testing.T) {
 		},
 	}
 	tue := FormatDaySchedule("4-ИС4", "Вторник", "17 ноября", WeekBlue, sched4.Days["Вторник"], changes)
-	if !strings.Contains(tue, "[ЗАМЕНА: МДК 11.01 — Бобков Д.И. — 307 ауд.]") {
+	if !strings.Contains(tue, "🔄 Замена: МДК 11.01 — Бобков Д.И. — 307 ауд.") {
 		t.Fatalf("expected replacement on pair 2, got:\n%s", tue)
 	}
 
 	// Несовпадающая дата изменений не должна накладываться на другой день
 	wedStale := FormatDaySchedule("4-ИС4", "Среда", "18 ноября", WeekBlue, sched4.Days["Среда"], changes)
-	if strings.Contains(wedStale, "[ЗАМЕНА:") {
+	if strings.Contains(wedStale, "🔄 Замена:") || strings.Contains(wedStale, "❌ Отмена") {
 		t.Fatalf("stale changes for 17 ноября should not apply to 18 ноября:\n%s", wedStale)
 	}
 }

@@ -17,8 +17,18 @@ func weekEmoji(week string) string {
 	return "⚪"
 }
 
-// FormatDaySchedule форматирует расписание на один день в виде компактного списка,
-// который корректно отображается на экранах телефонов, с наложением актуальных изменений.
+// FormatDaySchedule форматирует расписание на один день в новом виде:
+//
+//	Среда, 18 ноября (красная неделя)
+//	4-ИС3
+//
+//	2️⃣ МДК 01.04 (10:15 - 11:50)
+//	   Евстигнеев А.С.
+//
+//	0. Семьеведение (12:20 - 12:35)
+//
+//	3️⃣ МДК 11.01 (12:45 - 14:20)
+//	   Бобков Д.И.
 func FormatDaySchedule(groupName string, dayName string, date string, week string, lessons []Lesson, changesData ChangesData) string {
 	var sb strings.Builder
 
@@ -31,8 +41,8 @@ func FormatDaySchedule(groupName string, dayName string, date string, week strin
 		weekLabel = "красная"
 	}
 
-	sb.WriteString(fmt.Sprintf("📅 Расписание на %s, %s (%s неделя %s)\n", dayName, date, weekLabel, weekIcon))
-	sb.WriteString(fmt.Sprintf("👥 Группа: %s\n\n", groupName))
+	sb.WriteString(fmt.Sprintf("%s, %s (%s неделя %s)\n", dayName, date, weekLabel, weekIcon))
+	sb.WriteString(fmt.Sprintf("%s\n\n", groupName))
 
 	// Проверяем, относятся ли изменения в таблице к целевой дате
 	changesMatchDate := changesData.DateHeader != "" &&
@@ -65,7 +75,11 @@ func FormatDaySchedule(groupName string, dayName string, date string, week strin
 	pairIcons := []string{"1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣"}
 	appliedPairs := make(map[int]bool)
 
-	for _, lesson := range activeLessons {
+	for i, lesson := range activeLessons {
+		if i > 0 {
+			sb.WriteString("\n")
+		}
+
 		icon := "•"
 		if lesson.Number >= 1 && lesson.Number <= 6 {
 			icon = pairIcons[lesson.Number-1]
@@ -76,32 +90,29 @@ func FormatDaySchedule(groupName string, dayName string, date string, week strin
 			timeStr = "—"
 		}
 
-		pairWeekIcon := "🔵🔴"
-		if lesson.Week == WeekBlue {
-			pairWeekIcon = "🔵"
-		} else if lesson.Week == WeekRed {
-			pairWeekIcon = "🔴"
-		}
+		sb.WriteString(fmt.Sprintf("%s %s (%s)\n", icon, lesson.Subject, timeStr))
 
-		line := fmt.Sprintf("%s %s — %s", icon, timeStr, lesson.Subject)
+		teacherLine := "   "
 		if lesson.Teacher != "" {
-			line += fmt.Sprintf(" — %s", lesson.Teacher)
+			teacherLine += lesson.Teacher
 		}
 		if lesson.Room != "" {
-			line += fmt.Sprintf(" — ауд. %s", lesson.Room)
+			if lesson.Teacher != "" {
+				teacherLine += " | ауд. " + lesson.Room
+			} else {
+				teacherLine += "ауд. " + lesson.Room
+			}
 		}
+		sb.WriteString(teacherLine + "\n")
 
 		if change, ok := changeMap[lesson.Number]; ok {
 			appliedPairs[lesson.Number] = true
 			if IsCancellation(change.Content) {
-				line += " ❌ [ОТМЕНА]"
+				sb.WriteString("   ❌ Отмена\n")
 			} else {
-				line += fmt.Sprintf(" 🔄 [ЗАМЕНА: %s]", change.Content)
+				sb.WriteString(fmt.Sprintf("   🔄 Замена: %s\n", change.Content))
 			}
 		}
-
-		line += fmt.Sprintf(" [%s]", pairWeekIcon)
-		sb.WriteString(line + "\n")
 	}
 
 	// Добавляем пары из таблицы изменений, которых не было в основном расписании на этот день
@@ -113,23 +124,23 @@ func FormatDaySchedule(groupName string, dayName string, date string, week strin
 		if !ok {
 			continue
 		}
+		sb.WriteString("\n")
 		icon := pairIcons[pairNum-1]
 		if IsCancellation(change.Content) {
-			sb.WriteString(fmt.Sprintf("%s %d пара — ❌ [ОТМЕНА]\n", icon, pairNum))
+			sb.WriteString(fmt.Sprintf("%s %d пара — ❌ Отмена\n", icon, pairNum))
 		} else {
-			sb.WriteString(fmt.Sprintf("%s %d пара — ➕ [ИЗМЕНЕНИЕ: %s]\n", icon, pairNum, change.Content))
+			sb.WriteString(fmt.Sprintf("%s %d пара — 🔄 Замена: %s\n", icon, pairNum, change.Content))
 		}
 	}
 
-	sb.WriteString("\n")
 	if changesData.DateHeader == "" {
-		sb.WriteString("ℹ️ Таблица изменений не загружена или пуста.")
+		sb.WriteString("\nℹ️ Таблица изменений не загружена или пуста.")
 	} else if !changesMatchDate {
-		sb.WriteString(fmt.Sprintf("ℹ️ Изменений на %s пока нет (в таблице изменений дата: %s).", date, changesData.DateHeader))
+		sb.WriteString(fmt.Sprintf("\nℹ️ Изменений на %s пока нет (в таблице изменений дата: %s).", date, changesData.DateHeader))
 	} else if len(changeMap) == 0 {
-		sb.WriteString(fmt.Sprintf("✅ Изменений на %s для группы %s нет.", date, groupName))
+		sb.WriteString(fmt.Sprintf("\n✅ Изменений на %s для группы %s нет.", date, groupName))
 	} else {
-		sb.WriteString(fmt.Sprintf("ℹ️ Изменения на %s наложены на основное расписание.", date))
+		sb.WriteString(fmt.Sprintf("\nℹ️ Изменения на %s наложены на основное расписание.", date))
 	}
 
 	return sb.String()
