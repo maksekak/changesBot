@@ -35,7 +35,7 @@ func handleCommand(message *tgbotapi.Message, bot *tgbotapi.BotAPI) {
 /mygroup — показать текущую группу
 /groups — список доступных групп
 /weekset ДД.ММ blue|red — установить дату и цвет недели (например, /weekset 01.09 blue)
-/notify — включить/выключить ежедневную рассылку на завтра в 20:00
+/notify — включить/выключить ежедневную рассылку на завтра в 7:00 и 20:00
 /schedule — расписание с изменениями (до 17:00 на сегодня, после 17:00 на завтра)
 /help — эта справка`)
 
@@ -45,7 +45,7 @@ func handleCommand(message *tgbotapi.Message, bot *tgbotapi.BotAPI) {
 /mygroup — показать текущую группу
 /groups — список доступных групп
 /weekset ДД.ММ blue|red — установить дату и цвет недели
-/notify — вкл/выкл рассылку в 20:00
+/notify — вкл/выкл рассылку в 7:00 и 20:00
 /schedule — расписание с изменениями (до 17:00 сегодня, после 17:00 завтра)`)
 
 	case "/groups":
@@ -119,7 +119,7 @@ func handleCommand(message *tgbotapi.Message, bot *tgbotapi.BotAPI) {
 	case "/notify":
 		enabled := toggleNotify(chatID)
 		if enabled {
-			sendMessage(bot, chatID, "Ежедневная рассылка включена. Буду присылать расписание на завтра в 20:00.")
+			sendMessage(bot, chatID, "Ежедневная рассылка включена. Буду присылать расписание на завтра в 7:00 и 20:00.")
 		} else {
 			sendMessage(bot, chatID, "Ежедневная рассылка выключена.")
 		}
