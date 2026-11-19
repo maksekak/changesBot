@@ -36,8 +36,9 @@ func normalizeChangeContent(raw string) string {
 }
 
 // ParseChanges загружает (с кэшированием) и парсит таблицу изменений для указанной группы
-func ParseChanges(groupName string, _ string) (ChangesData, error) {
-	if err := ensureChangesSchedule(); err != nil {
+// forceRefresh — если "1" или "true", кэш игнорируется и файл скачивается заново
+func ParseChanges(groupName string, forceRefresh string) (ChangesData, error) {
+	if err := ensureChangesSchedule(forceRefresh == "1" || forceRefresh == "true"); err != nil {
 		return ChangesData{}, fmt.Errorf("ошибка кэша изменений: %w", err)
 	}
 

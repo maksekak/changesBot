@@ -70,11 +70,12 @@ func isCacheFresh(fileName string) bool {
 
 // ensureChangesSchedule гарантирует, что есть свежая копия таблицы изменений
 // (потокобезопасно, чтобы при массовой рассылке или одновременных запросах был только 1 запрос к Google)
-func ensureChangesSchedule() error {
+// force — если true, кэш игнорируется и файл скачивается заново
+func ensureChangesSchedule(force bool) error {
 	cacheMu.Lock()
 	defer cacheMu.Unlock()
 
-	if isCacheFresh(ChangesCacheFile) {
+	if !force && isCacheFresh(ChangesCacheFile) {
 		return nil
 	}
 	fmt.Println("Кэш таблицы изменений устарел, скачиваю...")

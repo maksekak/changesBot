@@ -36,6 +36,7 @@ func handleCommand(message *tgbotapi.Message, bot *tgbotapi.BotAPI) {
 /groups — список доступных групп
 /weekset ДД.ММ blue|red — установить дату и цвет недели (например, /weekset 01.09 blue)
 /notify — включить/выключить ежедневную рассылку на завтра в 7:00 и 20:00
+/refresh — принудительно обновить таблицу изменений
 /schedule — расписание с изменениями (до 17:00 на сегодня, после 17:00 на завтра)
 /help — эта справка`)
 
@@ -46,6 +47,7 @@ func handleCommand(message *tgbotapi.Message, bot *tgbotapi.BotAPI) {
 /groups — список доступных групп
 /weekset ДД.ММ blue|red — установить дату и цвет недели
 /notify — вкл/выкл рассылку в 7:00 и 20:00
+/refresh — принудительно обновить таблицу изменений
 /schedule — расписание с изменениями (до 17:00 сегодня, после 17:00 завтра)`)
 
 	case "/groups":
@@ -123,6 +125,13 @@ func handleCommand(message *tgbotapi.Message, bot *tgbotapi.BotAPI) {
 		} else {
 			sendMessage(bot, chatID, "Ежедневная рассылка выключена.")
 		}
+
+	case "/refresh":
+		if err := ensureChangesSchedule(true); err != nil {
+			sendMessage(bot, chatID, fmt.Sprintf("Ошибка обновления таблицы изменений: %v", err))
+			return
+		}
+		sendMessage(bot, chatID, "Таблица изменений обновлена.")
 
 	case "/schedule", "/завтра":
 		handleScheduleRequest(bot, chatID)
