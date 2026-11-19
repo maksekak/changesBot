@@ -27,6 +27,16 @@ go.work.sum
 # env file
 .env
 
+# Binary builds
+changesBotBuild
+changesBotBuild.exe
+
+# Runtime logs and cache
+bot.err
+bot.out
+changesSchedule.xlsx
+mainSchedule.xlsx
+
 # Editor/IDE
 # .idea/
 # .vscode/
